@@ -1,0 +1,153 @@
+Sub ExportDataToWord()
+
+    ' Declare variables for Excel
+    Dim xlSheet As Worksheet
+    Dim rowNumber As Long
+    Dim data(1 To 8) As Variant
+    Dim startDate As Date
+    Dim numMonths As Integer
+    Dim monthlyPayment As Double
+    Dim i As Integer
+
+    ' Get user input for the row number
+    rowNumber = Application.InputBox("Enter the row number for data extraction:", Type:=1)
+
+    ' Set the worksheet and extract data from specified row
+    Set xlSheet = ThisWorkbook.Sheets("Input") ' Sheet name changed to 'Input'
+    For i = 1 To 7
+        data(i) = xlSheet.Cells(rowNumber, i).Value
+    Next i
+
+    ' Extract data for payment schedule
+    startDate = xlSheet.Cells(rowNumber, 5).Value ' Starting date
+    numMonths = xlSheet.Cells(rowNumber, 6).Value ' Number of months
+    monthlyPayment = xlSheet.Cells(rowNumber, 7).Value ' Monthly payment
+
+    ' Declare variables for Word
+    Dim wdApp As Object
+    Dim wdDoc As Object
+    Dim wdTemplatePath As String
+    Dim wdSavePath As String
+    Dim wdRange As Object
+    Dim wdTable As Object
+
+    ' Set the path to the Word template and save location
+    wdTemplatePath = "[YOUR TEMPLATE PATH HERE]" ' Template path changed
+    
+    ' Sanitize data(2) for file name
+    Dim sanitizedData2 As String
+    sanitizedData2 = Replace(data(2), "\", "_")
+    sanitizedData2 = Replace(sanitizedData2, "/", "_")
+    sanitizedData2 = Replace(sanitizedData2, ":", "_")
+    sanitizedData2 = Replace(sanitizedData2, "*", "_")
+    sanitizedData2 = Replace(sanitizedData2, "?", "_")
+    sanitizedData2 = Replace(sanitizedData2, """", "_")
+    sanitizedData2 = Replace(sanitizedData2, "<", "_")
+    sanitizedData2 = Replace(sanitizedData2, ">", "_")
+    sanitizedData2 = Replace(sanitizedData2, "|", "_")
+    
+    ' Set the save path using sanitized data(2)
+    wdSavePath = "[YOUR SAVE PATH HERE] " & sanitizedData2 & ".pdf"
+
+    ' Create a new instance of Word
+    On Error Resume Next
+    Set wdApp = GetObject(Class:="Word.Application")
+    If wdApp Is Nothing Then
+        Set wdApp = CreateObject(Class:="Word.Application")
+    End If
+    On Error GoTo 0
+
+    ' Ensure Word is visible (useful for debugging)
+    wdApp.Visible = True
+
+    ' Open the Word template
+    On Error GoTo ErrorHandler
+    Set wdDoc = wdApp.Documents.Open(wdTemplatePath)
+
+    ' Insert data into the Word template
+    With wdDoc
+        If .Bookmarks.Exists("CustomerName") Then
+            .Bookmarks("CustomerName").Range.Text = data(2)    ' cust name
+        Else
+            MsgBox "Bookmark 'CustomerName' not found.", vbExclamation
+        End If
+        If .Bookmarks.Exists("SpelledOut") Then
+            .Bookmarks("SpelledOut").Range.Text = data(4)       ' $ amount spelled out
+        Else
+            MsgBox "Bookmark 'SpelledOut' not found.", vbExclamation
+        End If
+        If .Bookmarks.Exists("AmountOwed") Then
+            .Bookmarks("AmountOwed").Range.Text = Format(data(3), "#,##0.00")       ' total amount owed
+        Else
+            MsgBox "Bookmark 'AmountOwed' not found.", vbExclamation
+        End If
+        If .Bookmarks.Exists("MonthlyPmt") Then
+            .Bookmarks("MonthlyPmt").Range.Text = Format(data(7), "#,##0.00")        ' monthly pmt amount
+        Else
+            MsgBox "Bookmark 'MonthlyPmt' not found.", vbExclamation
+        End If
+        If .Bookmarks.Exists("FirstPmtDueDate") Then
+            .Bookmarks("FirstPmtDueDate").Range.Text = data(5)  ' first payment date
+        Else
+            MsgBox "Bookmark 'FirstPmtDueDate' not found.", vbExclamation
+        End If
+        If .Bookmarks.Exists("CustomerName2") Then
+            .Bookmarks("CustomerName2").Range.Text = data(2)    ' cust name
+        Else
+            MsgBox "Bookmark 'CustomerName2' not found.", vbExclamation
+        End If
+        If .Bookmarks.Exists("CustomerName3") Then
+            .Bookmarks("CustomerName3").Range.Text = data(2)    ' cust name
+        Else
+            MsgBox "Bookmark 'CustomerName3' not found.", vbExclamation
+        End If
+        If .Bookmarks.Exists("CustomerNumber") Then
+            .Bookmarks("CustomerNumber").Range.Text = data(1)   ' cust number
+        Else
+            MsgBox "Bookmark 'CustomerNumber' not found.", vbExclamation
+        End If
+    End With
+
+    ' Create and populate the payment schedule table
+    ' Ensure Bookmark9 exists before creating the table
+    If wdDoc.Bookmarks.Exists("Table") Then
+        Set wdRange = wdDoc.Bookmarks("Table").Range
+        Set wdTable = wdDoc.Tables.Add(wdRange, numMonths + 1, 2)
+
+        ' Set the table headers
+        wdTable.Cell(1, 1).Range.Text = "Date"
+        wdTable.Cell(1, 2).Range.Text = "Monthly Payment"
+
+        ' Populate the table with the payment schedule
+        For i = 1 To numMonths
+            wdTable.Cell(i + 1, 1).Range.Text = Format(DateAdd("m", i - 1, startDate), "mm/dd/yyyy")
+            wdTable.Cell(i + 1, 2).Range.Text = Format(monthlyPayment, "$#,##0.00")
+        Next i
+    Else
+        MsgBox "Bookmark 'Table' not found. Unable to create payment schedule table.", vbExclamation
+    End If
+
+    ' Save the document as PDF
+    wdDoc.ExportAsFixedFormat OutputFileName:=wdSavePath, ExportFormat:=17 ' wdExportFormatPDF is 17
+
+    ' Close the document
+    wdDoc.Close SaveChanges:=False
+    
+    ' Clean up
+    wdApp.Quit
+    Set wdDoc = Nothing
+    Set wdApp = Nothing
+
+    ' Notify user of completion
+    MsgBox "Data successfully exported to PDF document!", vbInformation
+
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "An error occurred: " & Err.Description, vbCritical
+    If Not wdDoc Is Nothing Then wdDoc.Close False
+    If Not wdApp Is Nothing Then wdApp.Quit False
+    Set wdDoc = Nothing
+    Set wdApp = Nothing
+
+End Sub

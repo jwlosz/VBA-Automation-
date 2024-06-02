@@ -1,0 +1,348 @@
+
+Sub CleanData()
+    Dim ws As Worksheet
+    Dim lastRow As Long
+    Dim i As Long
+    Dim cellValue As String
+    Dim userInput As String
+    Dim cellValue1 As Variant
+
+    ' Set the worksheet
+    Set ws = ThisWorkbook.Sheets("Input") ' Change "Input" to your sheet name
+
+    ' Get the user input for the new column
+    userInput = InputBox("Enter the value for the new column 'WE':", "User Input Required")
+    
+    ' Get the last row in column E
+    lastRow = ws.Cells(ws.Rows.Count, "E").End(xlUp).Row
+
+    ' Loop through the rows from bottom to top
+    For i = lastRow To 2 Step -1
+        cellValue = Trim(UCase(ws.Cells(i, 5).Value))
+        Debug.Print "Row " & i & ": " & cellValue ' Print the value to the Immediate Window
+
+        If cellValue <> "MECHANIC" And _
+           cellValue <> "MOBILE MECHANIC" And _
+           cellValue <> "MOBILE TECH" And _
+           cellValue <> "MOBILE TECH CDLA" And _
+           cellValue <> "MOBILE TIRE TECH" And _
+           cellValue <> "MOBILE TIRE TECH NON CDL" And _
+           cellValue <> "MOBILE TIRE TECH NON-CDL" And _
+           cellValue <> "SERVICE TECH" Then
+            ws.Rows(i).Delete
+        End If
+    Next i
+
+    ' Delete row tied to "[SPECIFIC NAME]" in column A
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    For i = lastRow To 2 Step -1
+        If Trim(UCase(ws.Cells(i, 1).Value)) = "[SPECIFIC NAME]" Then
+            ws.Rows(i).Delete
+        End If
+    Next i
+
+    ' Convert column B to number
+    For i = 2 To lastRow
+        cellValue1 = ws.Cells(i, 2).Value
+        If IsNumeric(cellValue1) Then
+            ws.Cells(i, 2).Value = Val(cellValue1)
+        Else
+            ws.Cells(i, 2).Value = cellValue1
+        End If
+    Next i
+    ' Remove columns D, F, and Q through T
+    ws.Columns("D").Delete
+    ws.Columns("E").Delete
+    ws.Columns("Q:R").Delete
+
+    ' Add a new column S titled "WE"
+    ws.Cells(1, 19).Value = "WE" ' Column S is the 19th column
+    
+    ' Fill the new column with the user input if the cell is empty
+    For i = 2 To lastRow
+        If ws.Cells(i, 19).Value = "" Then
+            ws.Cells(i, 19).Value = userInput
+        End If
+    Next i
+
+    ' Add new columns "Paid Hours" and "Worked Hours"
+    ws.Cells(1, 17).Value = "Paid Hours" ' Column Q is the 17th column
+    ws.Cells(1, 18).Value = "Worked Hours" ' Column R is the 18th column
+
+    ' Calculate the values for "Paid Hours" and "Worked Hours"
+    For i = 2 To lastRow
+        ws.Cells(i, 17).Value = ws.Cells(i, 12).Value + ws.Cells(i, 13).Value + ws.Cells(i, 14).Value + ws.Cells(i, 15).Value ' Sum of columns L, M, N, O
+        ws.Cells(i, 18).Value = ws.Cells(i, 14).Value + ws.Cells(i, 15).Value  ' Sum of columns N, O
+    Next i
+
+    MsgBox "Data cleaning complete!"
+End Sub
+
+Sub CreateWorkedHoursPivotTable()
+    Dim ws As Worksheet
+    Dim pivotWs As Worksheet
+    Dim lastRow As Long
+    Dim pivotTableRange As Range
+    Dim pivotTable As pivotTable
+    Dim pivotCacheWorked As pivotCache
+    Dim pivotField As pivotField
+
+    ' Set the worksheet with the cleaned data
+    On Error GoTo ErrorHandler
+    Set ws = ThisWorkbook.Sheets("Input")
+    
+    ' Determine the last row with data
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    
+    ' Set the range for the pivot table
+    Set pivotTableRange = ws.Range("A1:S" & lastRow) ' Adjust the range if necessary
+
+    ' Set the existing worksheet for the Worked Hours pivot table
+    Set pivotWs = ThisWorkbook.Sheets("WorkedHoursPivot")
+
+    ' Clear existing pivot table data
+    pivotWs.Cells.Clear
+    
+    ' Create a new pivot cache for the Worked Hours pivot table
+    Set pivotCacheWorked = ThisWorkbook.PivotCaches.Create(xlDatabase, pivotTableRange)
+
+    ' Create the pivot table
+    Set pivotTable = pivotCacheWorked.CreatePivotTable(TableDestination:=pivotWs.Range("A3"), TableName:="WorkedHoursPivotTable")
+
+    ' Set up the pivot table rows
+    With pivotTable
+        .PivotFields("Worker").Orientation = xlRowField
+        .PivotFields("Employee ID").Orientation = xlRowField
+        .PivotFields("Location").Orientation = xlRowField
+        .PivotFields("Business Title").Orientation = xlRowField
+        
+        ' Set up the pivot table columns
+        .PivotFields("WE").Orientation = xlColumnField
+        
+        ' Set up the pivot table values
+        .AddDataField .PivotFields("Worked Hours"), "Sum of Worked Hours", xlSum
+    End With
+    
+    ' Configure pivot table to remove subtotals
+    For Each pivotField In pivotTable.RowFields
+        pivotField.Subtotals(1) = False
+    Next pivotField
+
+    ' Remove grand totals
+    pivotTable.ColumnGrand = False
+    pivotTable.RowGrand = False
+
+    ' Set the pivot table to tabular form
+    pivotTable.RowAxisLayout xlTabularRow
+
+    ' Repeat all label items
+    pivotTable.RepeatAllLabels xlRepeatLabels
+
+    ' Optional: Auto-fit columns to make sure data is visible
+    pivotWs.Columns.AutoFit
+    
+    MsgBox "Worked Hours pivot table created successfully!"
+    Exit Sub
+
+ErrorHandler:
+    MsgBox "Error " & Err.Number & ": " & Err.Description, vbCritical, "Error"
+End Sub
+Sub CreatePaidHoursDebugPivotTable()
+    Dim ws As Worksheet
+    Dim pivotWs As Worksheet
+    Dim lastRow As Long
+    Dim pivotTableRange As Range
+    Dim pivotTable As pivotTable
+    Dim pivotCache As pivotCache
+    Dim pivotField As pivotField
+
+    ' Set the worksheet with the cleaned data
+    Set ws = ThisWorkbook.Sheets("Input")
+
+    ' Determine the last row with data
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    
+    ' Set the range for the pivot table
+    Set pivotTableRange = ws.Range("A1:S" & lastRow) ' Adjust the range if necessary
+
+    ' Set the existing worksheet for the pivot table
+    Set pivotWs = ThisWorkbook.Sheets("PaidHoursPivot")
+
+    ' Create the pivot cache
+    Set pivotCache = ThisWorkbook.PivotCaches.Create(xlDatabase, pivotTableRange)
+
+    ' Check if a pivot table already exists at the specified location
+    On Error Resume Next
+    Set pivotTable = pivotWs.PivotTables("PaidHoursPivotTable")
+    On Error GoTo 0
+
+    If pivotTable Is Nothing Then
+        ' Create the pivot table if it doesn't exist
+        Set pivotTable = pivotCache.CreatePivotTable(TableDestination:=pivotWs.Cells(3, 1), TableName:="PaidHoursPivotTable")
+    Else
+        ' Clear and refresh the existing pivot table
+        pivotTable.ClearTable
+        pivotTable.CacheIndex = pivotCache.Index
+        pivotTable.RefreshTable
+    End If
+
+    ' Set up the pivot table rows
+    With pivotTable
+        .PivotFields("Worker").Orientation = xlRowField
+        .PivotFields("Employee ID").Orientation = xlRowField
+        .PivotFields("Location").Orientation = xlRowField
+        .PivotFields("Business Title").Orientation = xlRowField
+        
+        ' Set up the pivot table columns
+        .PivotFields("WE").Orientation = xlColumnField
+        
+        ' Set up the pivot table values
+        .AddDataField .PivotFields("Paid Hours"), "Sum of Paid Hours", xlSum
+    End With
+    
+    ' Configure pivot table to remove subtotals
+    For Each pivotField In pivotTable.RowFields
+        pivotField.Subtotals(1) = False
+    Next pivotField
+
+    ' Remove grand totals
+    pivotTable.ColumnGrand = False
+    pivotTable.RowGrand = False
+
+    ' Set the pivot table to tabular form
+    pivotTable.RowAxisLayout xlTabularRow
+
+    ' Repeat all label items
+    pivotTable.RepeatAllLabels xlRepeatLabels
+
+    ' Optional: Auto-fit columns to make sure data is visible
+    pivotWs.Columns.AutoFit
+    
+    MsgBox "Paid Hours pivot table created successfully!"
+End Sub
+
+Sub ClearInputSheet()
+
+    Dim ws As Worksheet
+    
+     Set ws = ThisWorkbook.Sheets("Input")
+
+    ' Clear all data from the worksheet
+    ws.Cells.Clear
+    
+End Sub
+
+
+Sub ClearPivotSheet()
+    Dim ws As Worksheet
+
+    ' Set the worksheet
+    Set ws = ThisWorkbook.Sheets("PaidHoursPivot")
+
+    ' Clear all data from the worksheet
+    ws.Cells.Clear
+
+    ' Reset and do for Worked Hours
+    Set ws = ThisWorkbook.Sheets("WorkedHoursPivot")
+    ws.Cells.Clear
+    
+     ' Reset and do for Calculations Hours
+    Set ws = ThisWorkbook.Sheets("Calculations")
+    lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
+    ws.Range("A1:X" & lastRow).Clear
+    
+    MsgBox "All data cleared from the Pivot sheets!"
+End Sub
+
+
+Sub CreatePivotTables()
+    ' Run the Paid Hours Pivot Table creation
+    CreatePaidHoursDebugPivotTable
+    
+    ' Run the Worked Hours Pivot Table creation
+    CreateWorkedHoursPivotTable
+    
+    ' copy calculations into new worksheet for further work
+    CopyAllDataToCalculationsSheet
+    
+    ' populate formulas within the calculations sheet
+    PopulateFormulasTtoY
+    
+End Sub
+
+Sub CopyAllDataToCalculationsSheet()
+    Dim srcWsPaid As Worksheet
+    Dim srcWsWorked As Worksheet
+    Dim destWs As Worksheet
+    Dim lastRowSrcPaid As Long
+    Dim lastRowSrcWorked As Long
+    Dim lastRowDestPaid As Long
+    Dim lastRowDestWorked As Long
+    Dim srcRangePaid As Range
+    Dim srcRangeWorked As Range
+    Dim destRangePaid As Range
+    Dim destRangeWorked As Range
+    
+    ' Set the source and destination worksheets
+    Set srcWsPaid = ThisWorkbook.Sheets("PaidHoursPivot")
+    Set srcWsWorked = ThisWorkbook.Sheets("WorkedHoursPivot")
+    Set destWs = ThisWorkbook.Sheets("Calculations")
+    
+    ' Determine the last row in the source worksheets
+    lastRowSrcPaid = srcWsPaid.Cells(srcWsPaid.Rows.Count, "A").End(xlUp).Row
+    lastRowSrcWorked = srcWsWorked.Cells(srcWsWorked.Rows.Count, "A").End(xlUp).Row
+    
+    ' Define the source ranges (all data)
+    Set srcRangePaid = srcWsPaid.Range("A1", srcWsPaid.Cells(lastRowSrcPaid, srcWsPaid.UsedRange.Columns.Count))
+    Set srcRangeWorked = srcWsWorked.Range("A1", srcWsWorked.Cells(lastRowSrcWorked, srcWsWorked.UsedRange.Columns.Count))
+    
+    ' Find the last row in the destination worksheet for Paid Hours data
+    lastRowDestPaid = destWs.Cells(destWs.Rows.Count, "A").End(xlUp).Row + 1
+    
+    ' Define the destination range for Paid Hours data
+    Set destRangePaid = destWs.Range("A" & lastRowDestPaid)
+    
+    ' Copy the Paid Hours data to the destination range
+    srcRangePaid.Copy Destination:=destRangePaid
+    
+    ' Find the last row in the destination worksheet for Worked Hours data
+    lastRowDestWorked = destWs.Cells(destWs.Rows.Count, "K").End(xlUp).Row + 1
+    
+    ' Define the destination range for Worked Hours data
+    Set destRangeWorked = destWs.Range("K" & lastRowDestWorked)
+    
+    ' Copy the Worked Hours data to the destination range
+    srcRangeWorked.Copy Destination:=destRangeWorked
+    
+    ' Optional: Auto-fit columns in the destination sheet to make sure data is visible
+    destWs.Columns.AutoFit
+    
+    MsgBox "All data copied successfully to the 'Calculations' sheet!"
+End Sub
+
+Sub PopulateFormulasTtoY()
+    Dim instructionsWs As Worksheet
+    Dim calculationsWs As Worksheet
+    Dim lastRow As Long
+    Dim i As Long
+
+    ' Set the worksheets
+    Set instructionsWs = ThisWorkbook.Sheets("Instructions")
+    Set calculationsWs = ThisWorkbook.Sheets("Calculations")
+
+    ' Determine the last row in the Calculations sheet that contains data in columns A or K
+    lastRow = Application.WorksheetFunction.Max(calculationsWs.Cells(calculationsWs.Rows.Count, "A").End(xlUp).Row, _
+                                                calculationsWs.Cells(calculationsWs.Rows.Count, "K").End(xlUp).Row)
+
+    ' Copy the formulas from T29:X29 on the Instructions sheet to T6:X6 on the Calculations sheet
+    For i = 20 To 24 ' Columns T to X (20 to 24)
+        calculationsWs.Cells(6, i).Formula = instructionsWs.Cells(29, i).Formula
+    Next i
+
+    ' Fill down the formulas from T6:X6 to the last row
+    calculationsWs.Range("T6:X6").AutoFill Destination:=calculationsWs.Range("T6:X" & lastRow)
+
+    MsgBox "Formulas from Instructions sheet have been copied to Calculations sheet and filled down."
+End Sub
+
+
